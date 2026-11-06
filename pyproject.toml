@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slo-watch"
+version = "1.0.0"
+description = "A small, self-hosted SLO monitor with multi-window burn-rate alerting"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["Flask>=3.0", "PyYAML>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+slo-watch = "slo_watch.cli:main"
+
+[tool.setuptools]
+packages = ["slo_watch"]
+
+[tool.setuptools.package-data]
+slo_watch = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

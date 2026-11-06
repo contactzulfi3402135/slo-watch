@@ -1,0 +1,21 @@
+$ slo-watch -c config.yml serve --port 8091
+09:00:18 INFO    scheduler scheduler started: probe every 1s, evaluate every 1s
+09:00:47 WARNING alerts ALERT FIRING checkout-api/latency fast-burn burn(long)=20.00x burn(short)=20.00x notifications=1
+09:00:47 WARNING alerts ALERT FIRING checkout-api/latency slow-burn burn(long)=20.00x burn(short)=20.00x notifications=1
+09:03:38 WARNING scheduler 1/1 probes failed: checkout-api(error: Remote end closed connection without response)
+09:03:39 WARNING scheduler 1/1 probes failed: checkout-api(http 503)
+09:03:42 WARNING alerts ALERT FIRING checkout-api/availability slow-burn burn(long)=2.11x burn(short)=3.57x notifications=1
+09:03:47 WARNING alerts ALERT FIRING checkout-api/availability fast-burn burn(long)=5.51x burn(short)=15.91x notifications=1
+09:05:07 WARNING alerts ALERT RESOLVED checkout-api/latency fast-burn burn(long)=14.09x burn(short)=0.00x notifications=2
+09:05:31 WARNING alerts ALERT RESOLVED checkout-api/latency slow-burn burn(long)=15.84x burn(short)=2.00x notifications=2
+09:06:20 WARNING alerts ALERT RESOLVED checkout-api/availability fast-burn burn(long)=44.57x burn(short)=5.00x notifications=2
+09:07:21 WARNING alerts ALERT RESOLVED checkout-api/availability slow-burn burn(long)=24.61x burn(short)=1.67x notifications=2
+
+
+$ slo-watch -c config.yml report
+service              slo           objective  compliance    burn  budget  exhausted in
+--------------------------------------------------------------------------------------
+checkout-api         availability     99.00%     88.306%  11.69x    0.0%          0.0h
+checkout-api         latency          95.00%     76.740%   4.65x    0.0%          0.0h
+
+1256 valid events · slo window 28d · raw retention 2h  (retention is shorter, so the numbers above cover the retained rows)

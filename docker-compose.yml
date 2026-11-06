@@ -1,0 +1,25 @@
+services:
+  slo-watch:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - slo-data:/data
+    depends_on:
+      - checkout-api
+    environment:
+      PYTHONUNBUFFERED: "1"
+
+  # stand-in for the service being monitored: fails on a timer so the alert path
+  # has something to chew on
+  checkout-api:
+    image: python:3.12-slim
+    working_dir: /app
+    command: ["python", "demo/flaky.py", "--mode", "cycle", "--fast", "--port", "8099"]
+    volumes:
+      - ./demo:/app/demo:ro
+    expose:
+      - "8099"
+
+volumes:
+  slo-data:

@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>slo-watch</title>
+<style>
+  :root {
+    --bg: #101418; --panel: #171c22; --line: #242c35; --text: #d7dee7; --dim: #7d8b9a;
+    --ok: #43b581; --warn: #e0a341; --bad: #d9564f; --accent: #5aa9e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 16px;
+    padding: 18px 24px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .08em; text-transform: uppercase; }
+  header .meta { color: var(--dim); font-size: 12px; }
+  main { padding: 24px; display: grid; gap: 18px; max-width: 1100px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  .card h2 {
+    font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+    margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 16px; font-size: 13px; }
+  th { color: var(--dim); font-weight: 400; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  tbody tr + tr td { border-top: 1px solid var(--line); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; border: 1px solid var(--line); }
+  .pill.firing { border-color: var(--bad); color: var(--bad); }
+  .empty { padding: 16px; color: var(--dim); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+  footer { padding: 0 24px 32px; color: var(--dim); font-size: 12px; }
+  button {
+    background: transparent; color: var(--text); border: 1px solid var(--line);
+    border-radius: 4px; padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>slo-watch</h1>
+  <span class="meta" id="meta">loading…</span>
+</header>
+<main>
+  <section class="card">
+    <h2>Service level objectives</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>service</th><th>slo</th><th class="num">objective</th><th class="num">compliance</th>
+          <th class="num">burn</th><th class="num">budget</th><th class="num">exhausted in</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="slos"><tr><td colspan="8" class="empty">…</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Firing now</h2>
+    <table>
+      <thead><tr><th>service</th><th>slo</th><th>rule</th><th>severity</th><th class="num">burn (long)</th><th class="num">notified</th></tr></thead>
+      <tbody id="alerts"><tr><td colspan="6" class="empty">nothing firing</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Last hour</h2>
+    <div id="series" class="empty">…</div>
+  </section>
+</main>
+<footer>
+  Burn rate 1x spends the error budget exactly at the end of the window. Data comes from
+  <code>/api/summary</code>; this page has no build step and no dependencies.
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+const fmt = (value, suffix = "", digits = 2) =>
+  value === null || value === undefined ? "n/a" : value.toFixed(digits) + suffix;
+
+function tone(burn) {
+  if (burn === null || burn === undefined) return "dim";
+  if (burn >= 5) return "bad";
+  if (burn >= 2) return "warn";
+  return "ok";
+}
+
+function renderSlos(services) {
+  const rows = [];
+  for (const service of services) {
+    for (const slo of service.slos) {
+      rows.push(`<tr>
+        <td>${service.name}</td>
+        <td>${slo.slo}<span class="pill">${slo.sli}</span></td>
+        <td class="num">${slo.objective.toFixed(2)}%</td>
+        <td class="num ${slo.sufficient_data ? "" : "dim"}">${fmt(slo.compliance, "%", 3)}</td>
+        <td class="num ${tone(slo.burn_rate)}">${slo.burn_rate === null ? "n/a" : slo.burn_rate.toFixed(2) + "x"}</td>
+        <td class="num">
+          <div class="bar"><span style="width:${(slo.budget_remaining ?? 0) * 100}%"></span></div>
+          <span class="dim">${fmt(slo.budget_remaining === null ? null : slo.budget_remaining * 100, "%", 1)}</span>
+        </td>
+        <td class="num">${fmt(slo.exhausted_in_hours, "h", 1)}</td>
+        <td><button data-service="${service.name}">probe</button></td>
+      </tr>`);
+    }
+  }
+  $("slos").innerHTML = rows.join("") || `<tr><td colspan="8" class="empty">no slos configured</td></tr>`;
+  for (const button of document.querySelectorAll("button[data-service]")) {
+    button.onclick = async () => {
+      button.disabled = true;
+      button.textContent = "…";
+      try {
+        await fetch(`/api/services/${button.dataset.service}/probe`, { method: "POST" });
+      } finally {
+        button.disabled = false;
+        button.textContent = "probe";
+        refresh();
+      }
+    };
+  }
+}
+
+function renderAlerts(alerts) {
+  if (!alerts.length) {
+    $("alerts").innerHTML = `<tr><td colspan="6" class="empty">nothing firing</td></tr>`;
+    return;
+  }
+  $("alerts").innerHTML = alerts.map((a) => `<tr>
+    <td>${a.service}</td><td>${a.slo}</td>
+    <td><span class="pill firing">${a.rule}</span></td>
+    <td>${a.severity}</td>
+    <td class="num bad">${a.burn_long === null ? "n/a" : a.burn_long.toFixed(2) + "x"}</td>
+    <td class="num">${a.notifications}</td>
+  </tr>`).join("");
+}
+
+function renderSeries(services) {
+  const blocks = services.map((service) => {
+    const points = service.series;
+    if (!points.length) return `<div class="empty">${service.name}: no probes yet</div>`;
+    const width = 620, height = 60, step = width / Math.max(points.length, 1);
+    const path = points.map((p, i) => {
+      const bad = p.total - p.good;
+      const y = height - (bad / p.total) * height;
+      return `${i ? "L" : "M"}${(i * step).toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    const worst = Math.max(...points.map((p) => p.total - p.good));
+    return `<div class="empty" style="padding:12px 16px 0">${service.name} · worst minute ${worst} bad of ${points[0].total} probes</div>
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width:100%;height:60px;display:block">
+        <path d="${path}" fill="none" stroke="#d9564f" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+      </svg>`;
+  });
+  $("series").innerHTML = blocks.join("");
+}
+
+async function refresh() {
+  try {
+    const summary = await (await fetch("/api/summary")).json();
+    $("meta").textContent =
+      `${summary.services.length} service(s) · probing every ${summary.interval_seconds}s · ` +
+      `generated ${new Date(summary.generated_at * 1000).toLocaleTimeString()}`;
+    renderSlos(summary.services);
+    renderAlerts(summary.alerts);
+    renderSeries(summary.services);
+  } catch (error) {
+    $("meta").textContent = "api unreachable: " + error.message;
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# slo-watch config. Everything here is checked at startup.
+#
+# Two rules: one pages on a hard outage, one files a ticket on a slow leak. Both are
+# burn-rate rules, so a quiet service and a busy one get judged on the same scale.
+database: slo-watch.db
+interval_seconds: 1            # how often to probe (1s for the local demo, 15s is sane)
+evaluate_seconds: 1            # how often to evaluate the rules
+retention: 2h                  # raw probe rows to keep; a 28d report needs rollups (see README)
+
+services:
+  - name: checkout-api
+    probes:
+      - type: http
+        url: http://localhost:8099/health
+        method: GET
+        timeout_ms: 700
+        expect_status: 200
+    slos:
+      - name: availability
+        sli: availability
+        objective: 99.0
+        window: 28d
+        min_events: 20
+      - name: latency
+        sli: latency
+        objective: 95.0
+        window: 28d
+        latency_threshold_ms: 250
+        min_events: 20
+
+rules:
+  - name: fast-burn
+    long_window: 3m
+    short_window: 1m
+    burn_rate: 5
+    severity: page
+    renotify: 5m
+    min_events: 20
+  - name: slow-burn
+    long_window: 6m
+    short_window: 2m
+    burn_rate: 2
+    severity: ticket
+    renotify: 10m
+    min_events: 20
+
+notifiers:
+  - type: log
+  # - type: webhook
+  #   url: https://hooks.example.com/slo-watch
+  #   timeout_ms: 2000
